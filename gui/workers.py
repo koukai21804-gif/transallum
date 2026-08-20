@@ -489,13 +489,13 @@ class TranscribeWorker(BaseWorker):
         self._temp_dir = None
 
     def run(self):
+        """主流程：准备环境 → 分段 → 选设备 → 加载模型 → 逐段识别 → 输出"""
         try:
             from utils.config import (
                 PROJECT_ROOT,
                 WHISPER_MODELS_DIR,
                 detect_gpu,
                 find_exe,
-                resolve_whisper_model,
                 setup_whisper_env,
             )
             _diag("===== TranscribeWorker 开始 =====")
@@ -514,36 +514,17 @@ class TranscribeWorker(BaseWorker):
             self.status.emit(f"{t('progress.loading_model')} ({self.model_size})...")
             self.progress.emit(1)
 
-            # ── 获取音频时长 ──
-            total_sec = self._get_duration(ffprobe, self.input_path)
+            # ── 获取音频时长 + 分段策略 ──
+            total_sec = self._get_duration(ffprobe, self.input_path) or 0
             if total_sec:
-                mins = int(total_sec // 60)
-                secs = int(total_sec % 60)
-                self.log.emit(f"音频时长: {mins}分{secs}秒 ({total_sec:.0f}s)")
-            else:
-                total_sec = 0
-
-            # ── 分段策略 ──
-            if total_sec > self.CHUNK_SECONDS:
-                chunks = self._split_audio(ffmpeg, total_sec)
-                self.log.emit(f"长音频检测 → 自动切分为 {len(chunks)} 段 (~{self.CHUNK_SECONDS}s/段)")
-            else:
-                chunks = [(self.input_path, 0.0)]  # (路径, 时间偏移)
+                self.log.emit(f"音频时长: {int(total_sec // 60)}分"
+                              f"{int(total_sec % 60)}秒 ({total_sec:.0f}s)")
+            chunks = self._plan_chunks(ffmpeg, total_sec)
 
             # ── 解析加速设备 ──
             _diag("detect_gpu() 调用前")
             gpu_ok = detect_gpu()
-            if self.device_pref == "cuda":
-                if gpu_ok:
-                    device, compute_type = "cuda", "float16"
-                else:
-                    self.log.emit("⚠ GPU 不可用，自动回退到 CPU…")
-                    device, compute_type = "cpu", "int8"
-            elif self.device_pref == "cpu":
-                device, compute_type = "cpu", "int8"
-            else:  # auto
-                device, compute_type = ("cuda", "float16") if gpu_ok else ("cpu", "int8")
-
+            device, compute_type = self._resolve_device(gpu_ok)
             if device == "cuda":
                 self.log.emit("⚡ GPU 加速已启用 (CUDA, float16)")
             else:
@@ -551,103 +532,29 @@ class TranscribeWorker(BaseWorker):
             self.log.emit(t("log.device", device=device, compute=compute_type))
             _diag(f"device_pref={self.device_pref} gpu_ok={gpu_ok} → device={device} compute={compute_type}")
 
-            # 优先使用本地模型；本地没有时才尝试联网（失败时给出清晰中文提示）
-            local_model = resolve_whisper_model(self.model_size)
-            _diag(f"resolve_whisper_model('{self.model_size}') → {local_model}")
-            try:
-                if local_model:
-                    self.log.emit(f"使用本地模型: {local_model}")
-                    _diag(f"加载本地模型: {local_model}")
-                    model = WhisperModel(local_model, device=device,
-                                         compute_type=compute_type,
-                                         local_files_only=True)
-                    _diag("本地模型加载成功")
-                else:
-                    self.log.emit(f"本地未找到 {self.model_size} 模型，尝试从网络下载…")
-                    _diag(f"本地无模型，尝试联网下载 {self.model_size}")
-                    model = WhisperModel(self.model_size, device=device,
-                                         compute_type=compute_type,
-                                         download_root=str(WHISPER_MODELS_DIR))
-                    _diag("联网下载/加载模型成功")
-            except Exception as e:
-                _diag(f"模型加载失败: {type(e).__name__}: {e}")
-                _diag(traceback.format_exc())
-                raise RuntimeError(
-                    f"无法加载模型 {self.model_size}。\n"
-                    f"本地模型不存在，且联网下载失败"
-                    f"（网络无法访问 Hugging Face / 模型未预下载）。\n"
-                    f"解决方法：运行 scripts\\download_whisper_model.py 预下载模型"
-                    f"（从魔搭镜像获取），完成后重新转换。\n"
-                    f"详情: {e}") from e
+            # ── 加载模型（本地优先，缺失时联网下载） ──
+            model = self._load_model(WhisperModel, device, compute_type, WHISPER_MODELS_DIR)
 
             if self.isInterruptionRequested():
-                self._cleanup()
-                self.finished.emit(False, t("status.cancelled"))
+                self._cancel()
                 return
 
             # ── 逐段识别 ──
-            all_results = []
-            total_chunks = len(chunks)
-
-            for idx, (chunk_path, offset_sec) in enumerate(chunks):
-                if self.isInterruptionRequested():
-                    self._cleanup()
-                    self.finished.emit(False, t("status.cancelled"))
-                    return
-
-                chunk_pct_base = int(idx / total_chunks * 90)
-                self.status.emit(f"[{idx + 1}/{total_chunks}] {t('progress.transcribing')}")
-
-                segments, info = model.transcribe(
-                    chunk_path,
-                    language=self.language,
-                    beam_size=5,
-                    vad_filter=True,
-                )
-
-                if idx == 0:
-                    self.log.emit(t("log.lang_detected",
-                                    lang=info.language,
-                                    prob=info.language_probability))
-
-                for seg in segments:
-                    if self.isInterruptionRequested():
-                        self._cleanup()
-                        self.finished.emit(False, t("status.cancelled"))
-                        return
-
-                    # 偏移时间戳
-                    seg = _OffsetSegment(seg, offset_sec)
-                    all_results.append(seg)
-
-                    # 更新进度
-                    chunk_progress = seg.end / self.CHUNK_SECONDS * (90 / total_chunks)
-                    pct = min(chunk_pct_base + int(chunk_progress), 95)
-                    self.progress.emit(pct)
-
-                self.log.emit(f"  [{idx + 1}/{total_chunks}] {t('progress.ocr_page_suffix')} "
-                              f"{len(all_results)} segments")
-
+            results = self._transcribe_chunks(model, chunks)
+            if results is None:      # 已取消
+                return
             self._cleanup()
 
+            # ── 按格式输出 ──
             self.progress.emit(95)
             self.status.emit(t("progress.saving"))
-
-            # ── 按格式输出 ──
-            if self.output_format == ".srt":
-                content = self._to_srt(all_results)
-            elif self.output_format == ".vtt":
-                content = self._to_vtt(all_results)
-            else:
-                content = self._to_txt(all_results)
-
             with open(self.output_path, "w", encoding="utf-8") as f:
-                f.write(content)
+                f.write(self._format_output(results))
 
             self.progress.emit(100)
             duration_min = total_sec / 60 if total_sec > 0 else 0
             self.status.emit(f"{t('progress.transcribe_done')} "
-                             f"{duration_min:.1f}min → {len(all_results)} segments")
+                             f"{duration_min:.1f}min → {len(results)} segments")
             self.finished.emit(True, self.output_path)
 
         except Exception as e:
@@ -656,6 +563,126 @@ class TranscribeWorker(BaseWorker):
             _diag(traceback.format_exc())
             self.log.emit(traceback.format_exc())
             self.finished.emit(False, str(e))
+
+    # ── 分段策略 ──
+
+    def _plan_chunks(self, ffmpeg: str, total_sec: float) -> list:
+        """分段策略：长音频自动切分，否则整段识别。返回 [(路径, 时间偏移)]"""
+        if total_sec > self.CHUNK_SECONDS:
+            chunks = self._split_audio(ffmpeg, total_sec)
+            self.log.emit(f"长音频检测 → 自动切分为 {len(chunks)} 段 (~{self.CHUNK_SECONDS}s/段)")
+            return chunks
+        return [(self.input_path, 0.0)]  # (路径, 时间偏移)
+
+    # ── 设备解析 ──
+
+    def _resolve_device(self, gpu_ok: bool) -> tuple[str, str]:
+        """根据用户偏好与 GPU 可用性决定 (device, compute_type)。"""
+        if self.device_pref == "cuda":
+            if gpu_ok:
+                return "cuda", "float16"
+            self.log.emit("⚠ GPU 不可用，自动回退到 CPU…")
+            return "cpu", "int8"
+        if self.device_pref == "cpu":
+            return "cpu", "int8"
+        return ("cuda", "float16") if gpu_ok else ("cpu", "int8")
+
+    # ── 模型加载 ──
+
+    def _load_model(self, WhisperModel, device: str, compute_type: str, models_dir) -> object:
+        """加载模型：优先本地目录，缺失时联网下载；失败给出清晰中文指引。"""
+        from utils.config import resolve_whisper_model
+        local_model = resolve_whisper_model(self.model_size)
+        _diag(f"resolve_whisper_model('{self.model_size}') → {local_model}")
+        try:
+            if local_model:
+                self.log.emit(f"使用本地模型: {local_model}")
+                _diag(f"加载本地模型: {local_model}")
+                model = WhisperModel(local_model, device=device,
+                                     compute_type=compute_type,
+                                     local_files_only=True)
+                _diag("本地模型加载成功")
+            else:
+                self.log.emit(f"本地未找到 {self.model_size} 模型，尝试从网络下载…")
+                _diag(f"本地无模型，尝试联网下载 {self.model_size}")
+                model = WhisperModel(self.model_size, device=device,
+                                     compute_type=compute_type,
+                                     download_root=str(models_dir))
+                _diag("联网下载/加载模型成功")
+        except Exception as e:
+            _diag(f"模型加载失败: {type(e).__name__}: {e}")
+            _diag(traceback.format_exc())
+            raise RuntimeError(
+                f"无法加载模型 {self.model_size}。\n"
+                f"本地模型不存在，且联网下载失败"
+                f"（网络无法访问 Hugging Face / 模型未预下载）。\n"
+                f"解决方法：运行 scripts\\download_whisper_model.py 预下载模型"
+                f"（从魔搭镜像获取），完成后重新转换。\n"
+                f"详情: {e}") from e
+        return model
+
+    # ── 逐段识别 ──
+
+    def _transcribe_chunks(self, model, chunks) -> list | None:
+        """逐段识别，带取消检查与进度上报；取消时返回 None。"""
+        all_results = []
+        total_chunks = len(chunks)
+
+        for idx, (chunk_path, offset_sec) in enumerate(chunks):
+            if self.isInterruptionRequested():
+                self._cancel()
+                return None
+
+            chunk_pct_base = int(idx / total_chunks * 90)
+            self.status.emit(f"[{idx + 1}/{total_chunks}] {t('progress.transcribing')}")
+
+            segments, info = model.transcribe(
+                chunk_path,
+                language=self.language,
+                beam_size=5,
+                vad_filter=True,
+            )
+
+            if idx == 0:
+                self.log.emit(t("log.lang_detected",
+                                lang=info.language,
+                                prob=info.language_probability))
+
+            for seg in segments:
+                if self.isInterruptionRequested():
+                    self._cancel()
+                    return None
+
+                # 偏移时间戳
+                seg = _OffsetSegment(seg, offset_sec)
+                all_results.append(seg)
+
+                # 更新进度
+                chunk_progress = seg.end / self.CHUNK_SECONDS * (90 / total_chunks)
+                pct = min(chunk_pct_base + int(chunk_progress), 95)
+                self.progress.emit(pct)
+
+            self.log.emit(f"  [{idx + 1}/{total_chunks}] {t('progress.ocr_page_suffix')} "
+                          f"{len(all_results)} segments")
+
+        return all_results
+
+    # ── 取消 ──
+
+    def _cancel(self):
+        """取消任务：清理临时文件并发送取消信号。"""
+        self._cleanup()
+        self.finished.emit(False, t("status.cancelled"))
+
+    # ── 输出格式 ──
+
+    def _format_output(self, segments) -> str:
+        """按输出格式生成文本内容"""
+        if self.output_format == ".srt":
+            return self._to_srt(segments)
+        if self.output_format == ".vtt":
+            return self._to_vtt(segments)
+        return self._to_txt(segments)
 
     # ── 时长检测 ──
 

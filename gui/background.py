@@ -1,6 +1,6 @@
 """窗口 / 导航栏背景层 — 纯色 + 可选图片（cover 等比铺满 + 透明度）"""
-from PyQt6.QtCore import QRect, QSize, Qt
-from PyQt6.QtGui import QColor, QImage, QPainter, QPixmap
+from PyQt6.QtCore import QRect, QSize
+from PyQt6.QtGui import QColor, QImage, QPainter
 from PyQt6.QtWidgets import QWidget
 
 

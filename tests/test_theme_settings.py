@@ -3,6 +3,8 @@ import json
 
 import pytest
 
+# 需要可注入 SETTINGS_PATH 的便利 —— 各测试用 monkeypatch 改模块属性
+import utils.theme_settings as ts
 from utils.theme_settings import (
     COLOR_SLOTS,
     DEFAULT_SETTINGS,
@@ -11,9 +13,6 @@ from utils.theme_settings import (
     save_settings,
 )
 from utils.themes import DARK
-
-# 需要可注入 SETTINGS_PATH 的便利 —— 各测试用 monkeypatch 改模块属性
-import utils.theme_settings as ts
 
 
 @pytest.fixture(autouse=True)

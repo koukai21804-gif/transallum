@@ -30,6 +30,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from gui.background import AppBackground, SidebarBackground
+from gui.theme_settings_dialog import ThemeSettingsDialog
 from gui.workers import (
     DocumentConvertWorker,
     MediaConvertWorker,
@@ -45,10 +47,8 @@ from utils.config import (
     parse_time,
 )
 from utils.i18n import i18n, t
-from utils.themes import DARK, LIGHT, build_stylesheet
-from gui.background import AppBackground, SidebarBackground
-from gui.theme_settings_dialog import ThemeSettingsDialog
 from utils.theme_settings import load_settings, merge_colors, save_settings
+from utils.themes import DARK, LIGHT, build_stylesheet
 
 # 当前激活主题色彩字典（初始深色；toggle_theme 更新）
 _current_colors = DARK

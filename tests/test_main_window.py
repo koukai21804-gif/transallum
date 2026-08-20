@@ -1,8 +1,7 @@
-from utils.themes import DARK
-from utils.theme_settings import save_settings
-
-import utils.theme_settings as ts
 import gui.main_window as mw
+import utils.theme_settings as ts
+from utils.theme_settings import save_settings
+from utils.themes import DARK
 
 
 def _seed_settings(tmp_path, monkeypatch, colors=None, dark=True):
@@ -35,6 +34,6 @@ def test_toggle_theme_persists_dark_flag(app, tmp_path, monkeypatch):
 
 def test_light_theme_applies_light_base(app, tmp_path, monkeypatch):
     _seed_settings(tmp_path, monkeypatch, colors={"primary": "#ff5722"}, dark=False)
-    win = mw.MainWindow()
+    mw.MainWindow()
     assert mw._current_colors["bg_deep"] != DARK["bg_deep"]
     assert mw._current_colors["primary"] == "#ff5722"

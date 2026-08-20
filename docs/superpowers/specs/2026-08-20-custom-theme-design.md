@@ -80,8 +80,9 @@ gui/main_window.py            # 修改
   - _update_theme_widgets: page 背景改为透明（背景层负责底色）
 
 main.py                       # 修改
-  - 主题应用收敛进 MainWindow.__init__（删除启动时硬编码 DARK 的 setStyleSheet，
-    保留作首帧兜底亦可）
+  - 保留启动时 app.setStyleSheet(build_stylesheet(DARK)) 作首帧兜底（避免首帧闪默认风）；
+    MainWindow.__init__ 内 apply_theme() 随即以加载的设置覆盖生效
+  - 主题应用逻辑收敛进 MainWindow.apply_theme()
 
 tests/                        # 新增（pytest）
   - test_theme_settings.py：存取回环 / 损坏回退 / merge 优先级 / hex_to_rgba
@@ -95,7 +96,7 @@ tests/                        # 新增（pytest）
 1. **启动**：`load_settings()` → MainWindow 依 `dark` 选基础 → `apply_theme()`。
 2. **对话框保存**：Accept → 对话框返回 {colors, background} → 合并进 settings → `save_settings()` → `apply_theme()`。
 3. **深浅切换**：翻转 `dark` → `save_settings()` → `apply_theme()`（覆盖色保持）。
-4. **背景预览**：透明度滑块滑动 → 对话框本地预览（仅当 Apply/OK 才写入设置）。
+4. **对话框预览**：对话框内的色块/透明度滑块仅在其内部实时预览（色块即时更新、透明度显示百分比），**不做**主窗口实时预览；点「确定」才写入设置并应用到主窗口（YAGNI）。
 
 ## 错误处理
 

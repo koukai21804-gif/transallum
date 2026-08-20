@@ -239,6 +239,7 @@ TEXTS = {
     "theme.dialog.reset_all":    {"zh": "↺  全部重置", "en": "↺  Reset All"},
     "theme.dialog.apply":        {"zh": "确定", "en": "OK"},
     "theme.dialog.cancel":       {"zh": "取消", "en": "Cancel"},
+    "theme.dialog.alpha_hint":   {"zh": "半透明 · 点色块覆盖", "en": "translucent · pick to set"},
     "theme.dark":   {"zh": "🌙  深色模式",  "en": "🌙  Dark Mode"},
 }
 

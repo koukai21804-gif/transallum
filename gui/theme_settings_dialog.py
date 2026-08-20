@@ -21,6 +21,10 @@ from utils.i18n import t
 from utils.theme_settings import COLOR_SLOTS
 
 _HEX_RE = re.compile(r"^#?[0-9a-fA-F]{6}$")
+_RGBA_RE = re.compile(
+    r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*[\d.]+\s*)?\)",
+    re.IGNORECASE,
+)
 
 
 def _parse_hex(text: str) -> str | None:
@@ -31,6 +35,21 @@ def _parse_hex(text: str) -> str | None:
     return None
 
 
+def _to_qcolor(value: str) -> QColor:
+    """把 hex 或 CSS rgb()/rgba() 字符串转成 QColor。
+
+    QColor 的字符串构造不解析 CSS rgba()（实测返回 invalid），
+    但 QSS 支持 rgba()，故色块用原始串渲染；这里手动拆 RGB 供色轮初始色。
+    """
+    parsed = _parse_hex(value)
+    if parsed is not None:
+        return QColor(parsed)
+    m = _RGBA_RE.match((value or "").strip())
+    if m:
+        return QColor(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    return QColor()
+
+
 class _ColorRow(QWidget):
     """单个颜色插槽：中文名 + 色块按钮(→色轮) + hex 输入框 + 单行重置。"""
 
@@ -39,6 +58,7 @@ class _ColorRow(QWidget):
         super().__init__(parent)
         self.key = key
         self._default_hex = default_hex.upper()
+        self._alpha_hint = t("theme.dialog.alpha_hint")
         self._hex = ""
         self._syncing = False
         lay = QHBoxLayout(self)
@@ -72,15 +92,32 @@ class _ColorRow(QWidget):
         return self._hex
 
     def _set_hex(self, hex_str: str):
-        self._hex = hex_str.upper()
+        """写入当前颜色。
+
+        合法 hex：色块 + hex 框（启用）显示该 hex。
+        非 hex（如 rgba 半透明基色）：色块照常显示（QSS 支持 rgba()），
+        hex 输入框禁用并清空，避免把 "rgba(...)" 截断成乱码。
+        """
+        parsed = _parse_hex(hex_str)
         self._syncing = True
-        self.swatch.setStyleSheet(
-            f"background-color: {self._hex}; border: 1px solid #888888; border-radius: 4px;")
-        self.hex_edit.setText(self._hex)
+        if parsed is None:
+            self._hex = hex_str.upper()
+            self.swatch.setStyleSheet(
+                f"background-color: {hex_str}; border: 1px solid #888888; border-radius: 4px;")
+            self.hex_edit.clear()
+            self.hex_edit.setEnabled(False)
+            self.hex_edit.setPlaceholderText(self._alpha_hint)
+        else:
+            self._hex = parsed
+            self.swatch.setStyleSheet(
+                f"background-color: {parsed}; border: 1px solid #888888; border-radius: 4px;")
+            self.hex_edit.setEnabled(True)
+            self.hex_edit.setPlaceholderText("")
+            self.hex_edit.setText(parsed)
         self._syncing = False
 
     def _on_hex_text(self, text: str):
-        if self._syncing:
+        if self._syncing or not self.hex_edit.isEnabled():
             return
         color = QColor(text if text.startswith("#") else "#" + text)
         if color.isValid():
@@ -89,6 +126,8 @@ class _ColorRow(QWidget):
                 f"background-color: {self._hex}; border: 1px solid #888888; border-radius: 4px;")
 
     def _on_hex_commit(self):
+        if not self.hex_edit.isEnabled():
+            return
         parsed = _parse_hex(self.hex_edit.text())
         if parsed is None:
             self.hex_edit.setStyleSheet("border: 1px solid #e5484d;")
@@ -99,7 +138,7 @@ class _ColorRow(QWidget):
 
     def _on_pick(self):
         from PyQt6.QtWidgets import QColorDialog
-        color = QColorDialog.getColor(QColor(self._hex), self, t("theme.dialog.pick_color"))
+        color = QColorDialog.getColor(_to_qcolor(self._hex), self, t("theme.dialog.pick_color"))
         if color.isValid():
             self._set_hex(color.name().upper())
 

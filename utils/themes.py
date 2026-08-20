@@ -67,9 +67,9 @@ QMainWindow {{
     background-color: {c['bg_deep']};
 }}
 
-/* 主内容区背景 */
+/* 主内容区背景（实际底色由 AppBackground 背景层绘制） */
 QStackedWidget#contentStack {{
-    background-color: {c['bg_deep']};
+    background-color: transparent;
 }}
 
 QWidget {{
@@ -266,9 +266,8 @@ QTextEdit {{
 /* ================================================================
    SIDEBAR
    ================================================================ */
-QFrame#sidebar {{
-    background-color: {c['bg_sidebar']};
-    border-right: 1px solid {c['border_ctrl']};
+#sidebar {{
+    background-color: transparent;
 }}
 QPushButton#navBtn {{
     background-color: transparent;

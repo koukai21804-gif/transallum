@@ -15,7 +15,7 @@
 
 - **覆盖叠加模型**：自定义颜色作为覆盖层叠加在基础主题（深 `DARK` / 浅 `LIGHT`）之上；切换深浅时，覆盖颜色仍生效，未覆盖的颜色跟随基础主题。
 - **背景渲染 = 方案 A**：自定义绘制背景层（`paintEvent`），等比铺满 + 居中裁切（cover），运行时改透明度零延迟，窗口/导航栏完全独立。
-- **全部 28 个颜色键暴露**，含 3 个半透明底色键（`green_bg`/`red_bg`/`drag_glow`）；这些键编辑后按纯 hex 存储（失去原半透明）。
+- **全部 24 个颜色键暴露**（DARK/LIGHT 字典实际共 24 键），含 3 个半透明底色键（`green_bg`/`red_bg`/`drag_glow`）；这些键编辑后按纯 hex 存储（失去原半透明）。
 
 ## 数据模型
 
@@ -40,8 +40,7 @@
 
 ```
 utils/themes.py              # 修改
-  - 新增 hex_to_rgba(hex_color, alpha) -> str 助手
-  - build_stylesheet(c): QStackedWidget#contentStack 与 QFrame#sidebar 不再设实色背景
+  - build_stylesheet(c): QStackedWidget#contentStack 与 QFrame#sidebar 改为透明背景
     （颜色改由背景层绘制）；其余不变
 
 utils/theme_settings.py      # 新增
@@ -50,7 +49,7 @@ utils/theme_settings.py      # 新增
   - load_settings() -> dict        读取；损坏/缺失回退默认
   - save_settings(s: dict)         原子写（临时文件 + replace）
   - merge_colors(base, overrides)  {**base, **overrides}（仅含合法色键）
-  - COLOR_SLOTS: 有序列表 [(key, zh_name), ...]，共 28 项，用于对话框渲染
+  - COLOR_SLOTS: 有序列表 [(key, zh_name), ...]，共 24 项，用于对话框渲染
 
 gui/background.py             # 新增
   - AppBackground(QWidget)        中央部件；paintEvent 填底色(bg_deep) → 有图则
@@ -62,7 +61,7 @@ gui/theme_settings_dialog.py  # 新增
   - ThemeSettingsDialog(QDialog)
     - 背景区：窗口 / 导航栏 各一行
       图片路径(只读 QLineEdit) + 「选择图片…」(QFileDialog jpg/png) + 「移除」 + 透明度滑块+百分比
-    - 颜色区（QScrollArea）：28 行，每行 = 中文名 + 色块按钮(→QColorDialog 色轮+hex) + hex 输入框
+    - 颜色区（QScrollArea）：24 行，每行 = 中文名 + 色块按钮(→QColorDialog 色轮+hex) + hex 输入框
       hex↔色块双向同步；非法 hex 红框提示不生效；底部「全部重置」
     - 底部：确定(应用+保存) / 取消
   - result_data() -> dict 返回 {colors, background}
@@ -85,7 +84,7 @@ main.py                       # 修改
   - 主题应用逻辑收敛进 MainWindow.apply_theme()
 
 tests/                        # 新增（pytest）
-  - test_theme_settings.py：存取回环 / 损坏回退 / merge 优先级 / hex_to_rgba
+  - test_theme_settings.py：存取回环 / 损坏回退 / merge 优先级 / COLOR_SLOTS 与主题键一致
   - test_themes.py：build_stylesheet 含新旧关键色；contentStack/sidebar 不再不透明
   - test_theme_dialog.py（offscreen）：28 行构建 / hex↔色块同步 / 收集覆盖 / 重置
   - test_background.py：背景层构造 + set_background 冒烟

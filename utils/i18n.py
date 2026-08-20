@@ -223,6 +223,22 @@ TEXTS = {
 
     # ── 主题切换标签 ──
     "theme.light":  {"zh": "☀  浅色模式",  "en": "☀  Light Mode"},
+    # ── 自定义主题对话框 ──
+    "theme.open":                {"zh": "🎨 主题设置", "en": "🎨 Theme"},
+    "theme.dialog.title":        {"zh": "自定义主题", "en": "Custom Theme"},
+    "theme.dialog.background":   {"zh": "▧  背景设置", "en": "▧  Background"},
+    "theme.dialog.window_bg":    {"zh": "窗口背景:", "en": "Window BG:"},
+    "theme.dialog.sidebar_bg":   {"zh": "导航栏背景:", "en": "Sidebar BG:"},
+    "theme.dialog.no_image":     {"zh": "（未设置，使用纯色）", "en": "(none — solid color)"},
+    "theme.dialog.select_image": {"zh": "选择图片…", "en": "Select…"},
+    "theme.dialog.remove_image": {"zh": "移除", "en": "Remove"},
+    "theme.dialog.bad_image":    {"zh": "无法加载该图片，请选择有效的 jpg/png 文件。",
+                                  "en": "Cannot load image. Choose a valid jpg/png."},
+    "theme.dialog.colors":       {"zh": "🎨  自定义颜色", "en": "🎨  Custom Colors"},
+    "theme.dialog.pick_color":   {"zh": "选择颜色", "en": "Choose Color"},
+    "theme.dialog.reset_all":    {"zh": "↺  全部重置", "en": "↺  Reset All"},
+    "theme.dialog.apply":        {"zh": "确定", "en": "OK"},
+    "theme.dialog.cancel":       {"zh": "取消", "en": "Cancel"},
     "theme.dark":   {"zh": "🌙  深色模式",  "en": "🌙  Dark Mode"},
 }
 

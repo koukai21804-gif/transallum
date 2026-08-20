@@ -46,6 +46,9 @@ from utils.config import (
 )
 from utils.i18n import i18n, t
 from utils.themes import DARK, LIGHT, build_stylesheet
+from gui.background import AppBackground, SidebarBackground
+from gui.theme_settings_dialog import ThemeSettingsDialog
+from utils.theme_settings import load_settings, merge_colors, save_settings
 
 # 当前激活主题色彩字典（初始深色；toggle_theme 更新）
 _current_colors = DARK
@@ -903,15 +906,18 @@ class TranscribePage(ConverterPage):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self._theme_is_dark = True
+        self.settings = load_settings()
+        self._theme_is_dark = bool(self.settings.get("dark", True))
         self.resize(1020, 720)
         self.setMinimumSize(860, 600)
         self.setup_ui()
+        self.apply_theme()
         self.check_tools()
         self.retranslate()
 
     def setup_ui(self):
-        central = QWidget()
+        central = AppBackground()
+        self.central_bg = central
         self.setCentralWidget(central)
         main_layout = QHBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -920,8 +926,8 @@ class MainWindow(QMainWindow):
         # ============================================================
         # 左侧导航栏
         # ============================================================
-        sidebar = QFrame()
-        sidebar.setObjectName("sidebar")
+        sidebar = SidebarBackground()
+        self.sidebar_bg = sidebar
         sidebar.setFixedWidth(230)
 
         sidebar_layout = QVBoxLayout(sidebar)
@@ -937,6 +943,11 @@ class MainWindow(QMainWindow):
         self.theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.theme_btn.clicked.connect(self.toggle_theme)
 
+        self.theme_settings_btn = QPushButton()
+        self.theme_settings_btn.setObjectName("toolbarBtn")
+        self.theme_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.theme_settings_btn.clicked.connect(self.open_theme_settings)
+
         self.lang_btn = QPushButton()
         self.lang_btn.setObjectName("toolbarBtn")
         self.lang_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -944,6 +955,7 @@ class MainWindow(QMainWindow):
 
         toggle_row.addStretch()
         toggle_row.addWidget(self.theme_btn)
+        toggle_row.addWidget(self.theme_settings_btn)
         toggle_row.addWidget(self.lang_btn)
         sidebar_layout.addLayout(toggle_row)
         sidebar_layout.addSpacing(8)
@@ -1038,11 +1050,11 @@ class MainWindow(QMainWindow):
     def switch_page(self, index: int):
         self.stack.setCurrentIndex(index)
 
-    # ── 主题切换 ──
-    def toggle_theme(self):
+    # ── 主题应用（唯一入口） ──
+    def apply_theme(self):
         global _current_colors
-        self._theme_is_dark = not self._theme_is_dark
-        colors = DARK if self._theme_is_dark else LIGHT
+        base = DARK if self._theme_is_dark else LIGHT
+        colors = merge_colors(base, self.settings.get("colors", {}))
         _current_colors = colors
         sheet = build_stylesheet(colors)
         from PyQt6.QtWidgets import QApplication
@@ -1059,10 +1071,38 @@ class MainWindow(QMainWindow):
         p.setColor(QPalette.ColorRole.ButtonText, QColor(colors['text_body']))
         app.setPalette(p)
         self._update_theme_widgets(colors)
+        self._apply_background()
         self.retranslate()
-        # 全局强制刷新
         self.repaint()
         app.processEvents()
+
+    def _apply_background(self):
+        bg = self.settings.get("background", {})
+        win = bg.get("window", {})
+        side = bg.get("sidebar", {})
+        c = _current_colors
+        self.central_bg.set_background(c["bg_deep"], win.get("image"),
+                                       float(win.get("opacity", 1.0)))
+        self.sidebar_bg.set_background(c["bg_sidebar"], side.get("image"),
+                                       float(side.get("opacity", 1.0)))
+        self.sidebar_bg.set_border(c["border_ctrl"])
+
+    def toggle_theme(self):
+        self._theme_is_dark = not self._theme_is_dark
+        self.settings["dark"] = self._theme_is_dark
+        save_settings(self.settings)
+        self.apply_theme()
+
+    def open_theme_settings(self):
+        base = DARK if self._theme_is_dark else LIGHT
+        dlg = ThemeSettingsDialog(base, self.settings.get("colors", {}),
+                                  self.settings.get("background", {}), self)
+        if dlg.exec():
+            data = dlg.result_data()
+            self.settings["colors"] = data["colors"]
+            self.settings["background"] = data["background"]
+            save_settings(self.settings)
+            self.apply_theme()
 
     def _update_theme_widgets(self, c: dict):
         """更新非样式表控制的 widget 内联样式"""
@@ -1071,8 +1111,8 @@ class MainWindow(QMainWindow):
             f"background-color: {c['drag_glow']}; color: {c['primary_hi']}; padding: 10px 14px;"
         )
         for page in self.pages:
-            # 页面背景
-            page.setStyleSheet(f"background-color: {c['bg_deep']};")
+            # 页面背景（实际底色由 AppBackground 背景层绘制）
+            page.setStyleSheet("background-color: transparent;")
             page.title_lbl.setStyleSheet(
                 f"color: {c['primary_hi']}; padding-bottom: 2px; font-weight: 600; background: transparent;")
             page.fmt_label.setStyleSheet(
@@ -1143,6 +1183,7 @@ class MainWindow(QMainWindow):
         self.subtitle_lbl.setText(t("brand.subtitle"))
         self.tools_title.setText(t("tools.title"))
         self.theme_btn.setText(t("theme.light") if self._theme_is_dark else t("theme.dark"))
+        self.theme_settings_btn.setText(t("theme.open"))
         self.lang_btn.setText(t("toggle.lang"))
         for btn, key in self.nav_buttons:
             btn.setText(t(key))

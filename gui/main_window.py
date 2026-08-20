@@ -47,6 +47,9 @@ from utils.config import (
 from utils.i18n import i18n, t
 from utils.themes import DARK, LIGHT, build_stylesheet
 
+# 当前激活主题色彩字典（初始深色；toggle_theme 更新）
+_current_colors = DARK
+
 # ═══════════════════════════════════════════════════════════════════
 # 拖放输入框
 # ═══════════════════════════════════════════════════════════════════
@@ -67,10 +70,10 @@ class DropLineEdit(QLineEdit):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
             self.setStyleSheet(f"""
-                border: 2px dashed {DARK['border_focus']};
+                border: 2px dashed {_current_colors['border_focus']};
                 border-radius: 8px;
-                background-color: {DARK['drag_glow']};
-                color: {DARK['primary_hi']};
+                background-color: {_current_colors['drag_glow']};
+                color: {_current_colors['primary_hi']};
                 padding: 10px 14px;
             """)
 
@@ -99,17 +102,17 @@ def make_status_label(tool_name: str) -> QLabel:
 
 def _render_status(lbl: QLabel, tool_name: str, available: bool | None):
     if available is True:
-        color = DARK["green"]
+        color = _current_colors["green"]
         dot = f"<span style='color:{color};'>●</span>"
         text = f"  {dot}  {tool_name}: {t('tools.installed')}"
         style = f"font-size: 11px; color: {color}; font-weight: 600; background: transparent; padding: 2px 4px;"
     elif available is False:
-        color = DARK["red"]
+        color = _current_colors["red"]
         dot = f"<span style='color:{color};'>●</span>"
         text = f"  {dot}  {tool_name}: {t('tools.notfound')}"
         style = f"font-size: 11px; color: {color}; font-weight: 600; background: transparent; padding: 2px 4px;"
     else:
-        color = DARK["text_hint"]
+        color = _current_colors["text_hint"]
         dot = f"<span style='color:{color};'>●</span>"
         text = f"  {dot}  {tool_name}: {t('tools.checking')}"
         style = f"font-size: 11px; color: {color}; background: transparent; padding: 2px 4px;"
@@ -184,7 +187,7 @@ class ConverterPage(QWidget):
 
         self.fmt_label = QLabel()
         self.fmt_label.setStyleSheet(
-            f"color: {DARK['text_hint']}; font-weight: 500; background: transparent;")
+            f"color: {_current_colors['text_hint']}; font-weight: 500; background: transparent;")
         output_layout.addWidget(self.fmt_label)
         self._widgets_to_translate.append(("label", self.fmt_label, "output.format"))
 
@@ -198,7 +201,7 @@ class ConverterPage(QWidget):
 
         self.save_label = QLabel()
         self.save_label.setStyleSheet(
-            f"color: {DARK['text_hint']}; font-weight: 500; background: transparent;")
+            f"color: {_current_colors['text_hint']}; font-weight: 500; background: transparent;")
         output_layout.addWidget(self.save_label)
         self._widgets_to_translate.append(("label", self.save_label, "output.save_to"))
 
@@ -312,19 +315,21 @@ class ConverterPage(QWidget):
         if n == 1:
             path = self.input_paths[0]
             self.file_input.setText(path)
+            self.file_input.setToolTip(path)
             in_path = Path(path)
             # 若当前格式与源扩展名相同，自动切到下一个不同格式，避免覆盖源文件
             self._ensure_distinct_format(in_path.suffix)
             out_fmt = self.format_combo.currentData()
             out_path = in_path.with_suffix(out_fmt)
             self.output_path.setText(str(out_path))
-            self.log(f"<span style='color:{DARK['green']};'>{t('log.ok')}</span> "
+            self.output_path.setToolTip(str(out_path))
+            self.log(f"<span style='color:{_current_colors['green']};'>{t('log.ok')}</span> "
                      f"{t('log.selected_file', path=path)}")
         else:
             self.file_input.setText(f"📦  已选择 {n} 个文件（批量模式）")
             folder = os.path.dirname(self.input_paths[0])
             self.output_path.setText(f"{folder}  (输出至各文件同目录)")
-            self.log(f"<span style='color:{DARK['primary_hi']};'>[BATCH]</span> {n} 个文件")
+            self.log(f"<span style='color:{_current_colors['primary_hi']};'>[BATCH]</span> {n} 个文件")
 
     def _ensure_distinct_format(self, src_ext: str):
         """若当前输出格式与源扩展名相同，自动切换到第一个不同的格式（防覆盖源文件）。"""
@@ -349,6 +354,7 @@ class ConverterPage(QWidget):
         path, _ = QFileDialog.getSaveFileName(self, t("dialog.save_as"), "", filter_str)
         if path:
             self.output_path.setText(path)
+            self.output_path.setToolTip(path)
 
     def on_convert(self):
         pass
@@ -380,13 +386,13 @@ class ConverterPage(QWidget):
         if success:
             self.progress_bar.setValue(100)
             self.status_lbl.setText(t("status.done"))
-            self.log(f"<span style='color:{DARK['green']};'>{t('log.ok')}</span> "
+            self.log(f"<span style='color:{_current_colors['green']};'>{t('log.ok')}</span> "
                      f"{t('log.success', path=message)}")
             QMessageBox.information(self, t("dialog.done_title"),
                                     f"{t('dialog.done_msg')}{message}")
         else:
             self.status_lbl.setText(t("status.failed"))
-            self.log(f"<span style='color:{DARK['red']};'>{t('log.err')}</span> "
+            self.log(f"<span style='color:{_current_colors['red']};'>{t('log.err')}</span> "
                      f"{t('log.failed', msg=message)}")
             if message != t("status.cancelled"):
                 QMessageBox.warning(self, t("dialog.fail_title"),
@@ -408,12 +414,12 @@ class ConverterPage(QWidget):
         self.set_converting(True)
         self.log(self._sep())
         n = len(tasks)
-        self.log(f"<span style='color:{DARK['primary_hi']};'>[BATCH] {n} 个文件</span>")
+        self.log(f"<span style='color:{_current_colors['primary_hi']};'>[BATCH] {n} 个文件</span>")
 
         self.worker = BatchWorker(tasks)
         self.worker.file_index.connect(
             lambda cur, total: self.log(
-                f"<span style='color:{DARK['primary_hi']};'>── [{cur}/{total}]</span>"))
+                f"<span style='color:{_current_colors['primary_hi']};'>── [{cur}/{total}]</span>"))
         self.worker.file_progress.connect(self.on_progress)
         self.worker.progress.connect(self.on_progress)
         self.worker.status.connect(self.on_status)
@@ -422,12 +428,23 @@ class ConverterPage(QWidget):
         self.worker.start()
 
     def log(self, text: str):
+        if "<span" not in text:
+            lo = text.lower()
+            if text.startswith("[OK]") or "✅" in text:
+                color = _current_colors["green"]
+            elif "[WARN]" in text or "⚠" in text or lo.startswith("warning"):
+                color = _current_colors["warning"]
+            elif text.startswith("[ERR]") or "❌" in text or lo.startswith("error"):
+                color = _current_colors["red"]
+            else:
+                color = _current_colors["text_hint"]
+            text = f"<span style='color:{color};'>{text}</span>"
         self.log_output.append(text)
         sb = self.log_output.verticalScrollBar()
         sb.setValue(sb.maximum())
 
     def _sep(self):
-        return f"<span style='color:{DARK['text_hint']};'>{'─' * 52}</span>"
+        return f"<span style='color:{_current_colors['text_hint']};'>{'─' * 52}</span>"
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -458,7 +475,7 @@ class MediaPage(ConverterPage):
 
         self.trim_start_label = QLabel()
         self.trim_start_label.setStyleSheet(
-            f"color: {DARK['text_hint']}; font-weight: 500; background: transparent;")
+            f"color: {_current_colors['text_hint']}; font-weight: 500; background: transparent;")
         trim_layout.addWidget(self.trim_start_label)
 
         self.trim_start_edit = QLineEdit()
@@ -469,7 +486,7 @@ class MediaPage(ConverterPage):
 
         self.trim_end_label = QLabel()
         self.trim_end_label.setStyleSheet(
-            f"color: {DARK['text_hint']}; font-weight: 500; background: transparent;")
+            f"color: {_current_colors['text_hint']}; font-weight: 500; background: transparent;")
         trim_layout.addWidget(self.trim_end_label)
 
         self.trim_end_edit = QLineEdit()
@@ -480,7 +497,7 @@ class MediaPage(ConverterPage):
 
         self.trim_hint = QLabel()
         self.trim_hint.setStyleSheet(
-            f"color: {DARK['text_hint']}; font-size: 12px; background: transparent;")
+            f"color: {_current_colors['text_hint']}; font-size: 12px; background: transparent;")
         trim_layout.addWidget(self.trim_hint)
 
         trim_layout.addStretch()
@@ -550,7 +567,7 @@ class MediaPage(ConverterPage):
     def _go(self, worker, log_msg):
         self.set_converting(True)
         self.log(self._sep())
-        self.log(f"<span style='color:{DARK['primary_hi']};'>{log_msg}</span>")
+        self.log(f"<span style='color:{_current_colors['primary_hi']};'>{log_msg}</span>")
         self.worker = worker
         worker.progress.connect(self.on_progress)
         worker.status.connect(self.on_status)
@@ -595,7 +612,7 @@ class DocumentPage(ConverterPage):
     def _go(self, worker, log_msg):
         self.set_converting(True)
         self.log(self._sep())
-        self.log(f"<span style='color:{DARK['primary_hi']};'>{log_msg}</span>")
+        self.log(f"<span style='color:{_current_colors['primary_hi']};'>{log_msg}</span>")
         self.worker = worker
         worker.progress.connect(self.on_progress)
         worker.status.connect(self.on_status)
@@ -677,7 +694,7 @@ class OCRPage(ConverterPage):
             QMessageBox.warning(self, t("dialog.fail_title"), t("dialog.no_output")); return
         self.set_converting(True)
         self.log(self._sep())
-        self.log(f"<span style='color:{DARK['primary_hi']};'>"
+        self.log(f"<span style='color:{_current_colors['primary_hi']};'>"
                  f"{t('log.ocr_start', filename=os.path.basename(inp), fmt=fmt, lang=lang)}</span>")
         self.worker = OCRWorker(inp, out, fmt, language=lang)
         self.worker.progress.connect(self.on_progress)
@@ -856,7 +873,7 @@ class TranscribePage(ConverterPage):
 
         self.set_converting(True)
         self.log(self._sep())
-        self.log(f"<span style='color:{DARK['primary_hi']};'>"
+        self.log(f"<span style='color:{_current_colors['primary_hi']};'>"
                  f"{t('log.whisper_start', filename=os.path.basename(inp), fmt=fmt, model=model_size)}"
                  f"  |  {dev_name}</span>")
         self.worker = TranscribeWorker(inp, out, fmt,
@@ -990,6 +1007,7 @@ class MainWindow(QMainWindow):
         tools_layout.addWidget(self.tools_title)
 
         self.tool_labels = {}
+        self._tool_states = {}  # {name: (available, version)} — refreshed in check_tools
         for tool in ["ffmpeg", "tesseract"]:
             lbl = make_status_label(tool)
             tools_layout.addWidget(lbl)
@@ -1022,8 +1040,10 @@ class MainWindow(QMainWindow):
 
     # ── 主题切换 ──
     def toggle_theme(self):
+        global _current_colors
         self._theme_is_dark = not self._theme_is_dark
         colors = DARK if self._theme_is_dark else LIGHT
+        _current_colors = colors
         sheet = build_stylesheet(colors)
         from PyQt6.QtWidgets import QApplication
         app = QApplication.instance()
@@ -1046,6 +1066,10 @@ class MainWindow(QMainWindow):
 
     def _update_theme_widgets(self, c: dict):
         """更新非样式表控制的 widget 内联样式"""
+        drag_style = (
+            f"border: 2px dashed {c['border_focus']}; border-radius: 8px; "
+            f"background-color: {c['drag_glow']}; color: {c['primary_hi']}; padding: 10px 14px;"
+        )
         for page in self.pages:
             # 页面背景
             page.setStyleSheet(f"background-color: {c['bg_deep']};")
@@ -1057,6 +1081,8 @@ class MainWindow(QMainWindow):
                 f"color: {c['text_hint']}; font-weight: 500; background: transparent;")
             page.status_lbl.setStyleSheet(
                 f"color: {c['text_hint']}; font-size: 13px; padding: 2px 0; background: transparent;")
+            # 拖放输入框记录拖拽样式（恢复清空；实际拖拽时用 _current_colors 动态生成）
+            page.file_input._drag_style = drag_style
             # OCR / Transcribe 子控件
             if hasattr(page, 'ocr_lang_label'):
                 page.ocr_lang_label.setStyleSheet(
@@ -1067,6 +1093,16 @@ class MainWindow(QMainWindow):
             if hasattr(page, 'lang_label'):
                 page.lang_label.setStyleSheet(
                     f"color: {c['text_hint']}; font-weight: 500; background: transparent;")
+            # MediaPage trim 标签
+            if hasattr(page, 'trim_start_label'):
+                page.trim_start_label.setStyleSheet(
+                    f"color: {c['text_hint']}; font-weight: 500; background: transparent;")
+            if hasattr(page, 'trim_end_label'):
+                page.trim_end_label.setStyleSheet(
+                    f"color: {c['text_hint']}; font-weight: 500; background: transparent;")
+            if hasattr(page, 'trim_hint'):
+                page.trim_hint.setStyleSheet(
+                    f"color: {c['text_hint']}; font-size: 12px; background: transparent;")
             # 强制刷新页面及子控件
             page.repaint()
 
@@ -1086,6 +1122,11 @@ class MainWindow(QMainWindow):
             f"color: {c['text_hint']}; font-size: 11px; font-weight: 600; "
             f"background: transparent; padding-bottom: 4px;"
         )
+        # 工具状态指示点颜色跟随主题
+        for name, (available, version) in self._tool_states.items():
+            lbl = self.tool_labels.get(name)
+            if lbl:
+                update_status_label(lbl, name, available, version)
 
     # ── 语言切换 ──
     def toggle_language(self):
@@ -1116,6 +1157,7 @@ class MainWindow(QMainWindow):
         for name, info in tools.items():
             lbl = self.tool_labels.get(name)
             if lbl:
+                self._tool_states[name] = (info["available"], info.get("version", ""))
                 update_status_label(lbl, name, info["available"], info.get("version", ""))
                 if info["available"]:
                     self.pages[0].log(f"[TOOLS] {name}: {info['path']}")

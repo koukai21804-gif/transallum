@@ -10,21 +10,22 @@ DARK = {
     "bg_tools":     "#0f131a",
     "border_card":  "#334155",
     "border_ctrl":  "#1e293b",
-    "border_focus": "#00d4ff",
-    "primary":      "#0ea5e9",
-    "primary_hi":   "#00d4ff",
+    "border_focus": "#58a6ff",
+    "primary":      "#1677cb",
+    "primary_hi":   "#58a6ff",
     "btn_text":     "#0a0e17",    # 深底按钮用深色文字
     "text_title":   "#e6edf3",
     "text_body":    "#c9d1d9",
     "text_hint":    "#64748b",
     "text_dim":     "#475569",
-    "green":        "#10b981",
+    "green":        "#4ade80",
     "red":          "#ef4444",
-    "green_bg":     "rgba(16,185,129,0.08)",
+    "warning":      "#faad14",
+    "green_bg":     "rgba(74,222,128,0.08)",
     "red_bg":       "rgba(239,68,68,0.08)",
     "scrollbar":    "#334155",
-    "scroll_hover": "#0ea5e9",
-    "drag_glow":    "rgba(0,212,255,0.06)",
+    "scroll_hover": "#58a6ff",
+    "drag_glow":    "rgba(22,119,203,0.08)",
 }
 
 # ── 浅色主题色彩 ──
@@ -33,25 +34,26 @@ LIGHT = {
     "bg_card":      "#ffffff",
     "bg_log":       "#f8f9fa",
     "bg_input":     "#ffffff",
-    "bg_sidebar":   "#e8ecf1",
+    "bg_sidebar":   "#e8ecf2",
     "bg_tools":     "#f8f9fa",
     "border_card":  "#d1d5db",
     "border_ctrl":  "#d1d5db",
-    "border_focus": "#0284c7",
-    "primary":      "#0369a1",    # 深蓝，白字高对比
-    "primary_hi":   "#0284c7",    # 亮蓝
+    "border_focus": "#1677cb",
+    "primary":      "#1677cb",    # 统一品牌蓝
+    "primary_hi":   "#1677cb",    # 浅色下主色即高亮色
     "btn_text":     "#ffffff",    # 按钮文字始终白色
     "text_title":   "#1e293b",
     "text_body":    "#334155",
     "text_hint":    "#94a3b8",
     "text_dim":     "#cbd5e1",
-    "green":        "#059669",
+    "green":        "#009944",
     "red":          "#dc2626",
-    "green_bg":     "rgba(5,150,105,0.06)",
+    "warning":      "#b35c00",
+    "green_bg":     "rgba(0,153,68,0.08)",
     "red_bg":       "rgba(220,38,38,0.06)",
     "scrollbar":    "#cbd5e1",
-    "scroll_hover": "#0369a1",
-    "drag_glow":    "rgba(3,105,161,0.10)",
+    "scroll_hover": "#1677cb",
+    "drag_glow":    "rgba(22,119,203,0.10)",
 }
 
 
@@ -114,11 +116,11 @@ QPushButton:hover {{
     color: {c['text_title']};
 }}
 
-/* 主按钮 — 与次级按钮同蓝色系，实心填充 */
+/* 主按钮 — 实心蓝底白字 */
 QPushButton#convertBtn {{
     background-color: {c['primary']};
-    color: {c['primary_hi']};
-    border: 1px solid {c['primary_hi']};
+    color: #ffffff;
+    border: none;
     padding: 12px 44px;
     font-size: 15px;
     font-weight: 700;
@@ -127,19 +129,19 @@ QPushButton#convertBtn {{
 QPushButton#convertBtn:hover {{
     background-color: {c['primary_hi']};
     color: #ffffff;
-    border-color: {c['primary_hi']};
+    border: none;
 }}
 QPushButton#convertBtn:disabled {{
     background-color: {c['primary']};
-    color: {c['primary_hi']};
-    border: 1px solid {c['primary_hi']};
+    color: rgba(255,255,255,0.5);
+    border: none;
 }}
 
 /* 次级按钮 */
 QPushButton#browseBtn {{
     background-color: transparent;
-    color: {c['primary_hi']};
-    border: 1px solid {c['primary']};
+    color: {c['primary']};
+    border: 1.5px solid {c['primary']};
     border-radius: 8px;
     padding: 9px 18px;
     font-weight: 600;
@@ -147,6 +149,7 @@ QPushButton#browseBtn {{
 QPushButton#browseBtn:hover {{
     background-color: {c['drag_glow']};
     border-color: {c['primary_hi']};
+    color: {c['primary_hi']};
 }}
 
 /* 取消按钮 */

@@ -28,6 +28,7 @@ logs/
 .mypy_cache/
 node_modules/
 .claude/
+.superpowers/
 
 # ── 编辑器 / 系统 ──
 .vscode/

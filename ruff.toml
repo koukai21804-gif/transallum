@@ -1,0 +1,13 @@
+# ruff 静态检查配置 —— Transallum
+# 运行：./venv/Scripts/python.exe -m ruff check main.py gui utils scripts
+
+target-version = "py312"
+
+[lint]
+# 刻意的规则例外（均为项目设计选择，勿轻易改回）：
+# - BLE001 盲捕获 Exception：worker 线程 / GPU 自检必须捕获一切异常并转为
+#   error 信号或日志，保证 GUI 永不因单次失败而崩溃。
+# - S110   try/except/pass：日志落盘、临时文件清理等路径故意静默容错。
+# - PLW1510 subprocess.run 未传 check：所有调用处均已自行检查 returncode
+#   并给出友好错误；check=True 反而会丢失精确错误信息。
+ignore = ["BLE001", "S110", "PLW1510"]

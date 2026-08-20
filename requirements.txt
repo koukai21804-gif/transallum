@@ -1,0 +1,22 @@
+# Transallum - 万能转换器 依赖
+# Python 3.12  (venv 位于 D 盘，勿装 C 盘)
+
+# ── GUI ──
+PyQt6>=6.11.0
+
+# ── 文档转换 (PDF → Word/TXT) ──
+pymupdf>=1.28.0          # 即 import fitz
+pdfplumber>=0.11.10
+python-docx>=1.2.0
+
+# ── OCR (Tesseract 需单独放置到 tools/tesseract) ──
+pytesseract>=0.3.13
+Pillow>=12.3.0
+
+# ── AI 听写 (faster-whisper, CPU/GPU) ──
+faster-whisper>=1.2.1
+ctranslate2>=4.8.1       # config.py 直接 import，显式声明
+numpy>=2.5.1
+
+# ── 打包 (仅构建需要) ──
+pyinstaller>=6.21.0

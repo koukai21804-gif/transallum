@@ -1,0 +1,36 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+
+# ── 虚拟环境 ──
+venv/
+.venv/
+
+# ── 构建产物 ──
+build/
+dist/
+*.spec.bak
+
+# ── 外部工具二进制（ffmpeg / tesseract，按需单独放置） ──
+tools/
+
+# ── Whisper 模型（3GB+，单独下载 / 分发） ──
+models/
+
+# ── 运行日志 / 自检日志 ──
+logs/
+
+# ── 工具缓存 / 本地配置 ──
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+node_modules/
+.claude/
+
+# ── 编辑器 / 系统 ──
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

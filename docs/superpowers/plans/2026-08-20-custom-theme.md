@@ -97,6 +97,7 @@ git commit -m "chore: 引入 pytest 测试基础设施（offscreen Qt + sys.path
 - [ ] **步骤 1：编写失败的测试**
 
 ```python
+import copy
 import json
 
 import pytest
@@ -147,7 +148,7 @@ def test_load_corrupt_json_returns_defaults(tmp_path, monkeypatch):
 
 
 def test_save_load_roundtrip():
-    s = DEFAULT_SETTINGS.copy()
+    s = copy.deepcopy(DEFAULT_SETTINGS)
     s["colors"] = {"primary": "#ff5722"}
     s["background"]["window"] = {"image": r"D:\a.jpg", "opacity": 0.3}
     save_settings(s)
@@ -351,13 +352,12 @@ QStackedWidget#contentStack {{
 ```
 
 ```python
-QFrame#sidebar {{
+#sidebar {{
     background-color: transparent;
-    border-right: 1px solid {c['border_ctrl']};
 }}
 ```
 
-注意：`QFrame#sidebar` 选择器改后仍匹配（sidebar 继承 QWidget），边框保留在 QSS、背景移交给 SidebarBackground 绘制。
+注意：sidebar 实现为 `SidebarBackground(AppBackground)`（QWidget 子类），故 QSS 用 `#sidebar` 按 objectName 选择；底色/图片/右侧 1px 边框全部由 `SidebarBackground.paintEvent` 绘制，这里只需保证无默认实色。
 
 - [ ] **步骤 4：运行测试验证通过**
 

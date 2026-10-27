@@ -2,7 +2,7 @@
 
 Windows 桌面万能格式转换工具，基于 **PyQt6 + PyInstaller(onedir)**。
 
-English | [简体中文](#-transallum--万能转换器) · [README in English](README_EN.md)
+[简体中文](#-transallum--万能转换器) · [README in English](README_EN.md)
 
 ![功能] 音视频互转 · PDF→文档 · OCR 识别 · AI 听写（faster-whisper，支持 CPU/GPU）
 

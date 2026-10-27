@@ -1,4 +1,4 @@
-"""自定义主题设置对话框 — 背景设置 + 全部颜色键（hex 输入 + 色轮）"""
+"""自定义主题设置对话框 — 背景设置 + 全部颜色键（hex + 色轮 + 透明度 0-100%）"""
 import re
 
 from PyQt6.QtCore import Qt
@@ -17,14 +17,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from utils.color_utils import make_color, normalize_color, split_color
 from utils.i18n import t
 from utils.theme_settings import COLOR_SLOTS
 
 _HEX_RE = re.compile(r"^#?[0-9a-fA-F]{6}$")
-_RGBA_RE = re.compile(
-    r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*[\d.]+\s*)?\)",
-    re.IGNORECASE,
-)
 
 
 def _parse_hex(text: str) -> str | None:
@@ -36,114 +33,135 @@ def _parse_hex(text: str) -> str | None:
 
 
 def _to_qcolor(value: str) -> QColor:
-    """把 hex 或 CSS rgb()/rgba() 字符串转成 QColor。
+    """把 #RRGGBB / rgb() / rgba() 转成 QColor（忽略透明度，供色轮初始色）。
 
-    QColor 的字符串构造不解析 CSS rgba()（实测返回 invalid），
-    但 QSS 支持 rgba()，故色块用原始串渲染；这里手动拆 RGB 供色轮初始色。
+    QColor 的字符串构造不解析 CSS rgba()（实测返回 invalid），故手动拆 RGB。
     """
-    parsed = _parse_hex(value)
-    if parsed is not None:
-        return QColor(parsed)
-    m = _RGBA_RE.match((value or "").strip())
-    if m:
-        return QColor(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-    return QColor()
+    sp = split_color(value)
+    if sp is None:
+        return QColor()
+    return QColor(sp[0], sp[1], sp[2])
 
 
 class _ColorRow(QWidget):
-    """单个颜色插槽：中文名 + 色块按钮(→色轮) + hex 输入框 + 单行重置。"""
+    """单个颜色插槽：中文名 + 色块(→色轮) + hex(RGB) + 透明度滑块(0-100%) + 重置。
 
-    def __init__(self, key: str, zh_name: str, current_hex: str,
-                 default_hex: str, parent=None):
+    颜色值由独立的 RGB 与透明度合成：hex/色轮只改 RGB，滑块只改透明度，
+    _value 存合成后的颜色串（不透明白点为 #RRGGBB，否则 rgba(r,g,b,a)）。
+    """
+
+    def __init__(self, key: str, zh_name: str, current: str, default: str, parent=None):
         super().__init__(parent)
         self.key = key
-        self._default_hex = default_hex.upper()
-        self._alpha_hint = t("theme.dialog.alpha_hint")
-        self._hex = ""
+        self._default = default
+        self._rgb = (0, 0, 0)
+        self._alpha = 1.0
+        self._value = ""
         self._syncing = False
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 2, 0, 2)
-        lay.setSpacing(8)
+        lay.setSpacing(6)
         name = QLabel(zh_name)
-        name.setMinimumWidth(96)
+        name.setMinimumWidth(88)
         lay.addWidget(name)
         self.swatch = QPushButton()
-        self.swatch.setFixedSize(48, 24)
+        self.swatch.setFixedSize(44, 22)
         self.swatch.setCursor(Qt.CursorShape.PointingHandCursor)
         self.swatch.setToolTip(t("theme.dialog.pick_color"))
         self.swatch.clicked.connect(self._on_pick)
         lay.addWidget(self.swatch)
         self.hex_edit = QLineEdit()
         self.hex_edit.setMaxLength(7)
-        self.hex_edit.setFixedWidth(90)
+        self.hex_edit.setFixedWidth(78)
         self.hex_edit.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.hex_edit.textChanged.connect(self._on_hex_text)
         self.hex_edit.editingFinished.connect(self._on_hex_commit)
         lay.addWidget(self.hex_edit)
+        self.alpha_slider = QSlider(Qt.Orientation.Horizontal)
+        self.alpha_slider.setRange(0, 100)
+        self.alpha_slider.setFixedWidth(96)
+        self.alpha_slider.setToolTip(t("theme.dialog.alpha_hint"))
+        self.alpha_slider.valueChanged.connect(self._on_alpha)
+        lay.addWidget(self.alpha_slider)
+        self.pct_lbl = QLabel("100%")
+        self.pct_lbl.setFixedWidth(38)
+        lay.addWidget(self.pct_lbl)
         self.reset_btn = QPushButton("↺")
-        self.reset_btn.setFixedSize(28, 24)
+        self.reset_btn.setFixedSize(24, 22)
         self.reset_btn.setToolTip("重置此项")
         self.reset_btn.clicked.connect(self._on_reset)
         lay.addWidget(self.reset_btn)
         lay.addStretch()
-        self._set_hex(current_hex)
+        self._set_value(current)
 
-    def current_hex(self) -> str:
-        return self._hex
+    def current_value(self) -> str:
+        return self._value
 
-    def _set_hex(self, hex_str: str):
-        """写入当前颜色。
-
-        合法 hex：色块 + hex 框（启用）显示该 hex。
-        非 hex（如 rgba 半透明基色）：色块照常显示（QSS 支持 rgba()），
-        hex 输入框禁用并清空，避免把 "rgba(...)" 截断成乱码。
-        """
-        parsed = _parse_hex(hex_str)
+    def _set_value(self, value: str):
+        """写入当前颜色串：拆成 RGB + 透明度，同步色块/hex/滑块。"""
+        sp = split_color(value)
+        if sp is None:
+            sp = (0, 0, 0, 1.0)
+        r, g, b, alpha = sp
         self._syncing = True
-        if parsed is None:
-            self._hex = hex_str.upper()
-            self.swatch.setStyleSheet(
-                f"background-color: {hex_str}; border: 1px solid #888888; border-radius: 4px;")
-            self.hex_edit.clear()
-            self.hex_edit.setEnabled(False)
-            self.hex_edit.setPlaceholderText(self._alpha_hint)
-        else:
-            self._hex = parsed
-            self.swatch.setStyleSheet(
-                f"background-color: {parsed}; border: 1px solid #888888; border-radius: 4px;")
-            self.hex_edit.setEnabled(True)
-            self.hex_edit.setPlaceholderText("")
-            self.hex_edit.setText(parsed)
+        self._rgb = (r, g, b)
+        self._alpha = alpha
+        self._value = normalize_color(value) or make_color(r, g, b, alpha)
+        self.hex_edit.setEnabled(True)
+        self.hex_edit.setPlaceholderText("")
+        self.hex_edit.setText(f"#{r:02X}{g:02X}{b:02X}")
+        self.alpha_slider.setValue(round(alpha * 100))
+        self.pct_lbl.setText(f"{round(alpha * 100)}%")
+        self._refresh_swatch()
         self._syncing = False
 
+    def _refresh_swatch(self):
+        self.swatch.setStyleSheet(
+            f"background-color: {self._value}; border: 1px solid #888888; border-radius: 4px;")
+
+    def _commit(self):
+        """由当前 RGB + 透明度合成颜色串并刷新色块。"""
+        self._value = make_color(*self._rgb, self._alpha)
+        self._refresh_swatch()
+
     def _on_hex_text(self, text: str):
-        if self._syncing or not self.hex_edit.isEnabled():
+        if self._syncing:
             return
-        color = QColor(text if text.startswith("#") else "#" + text)
-        if color.isValid():
-            self._hex = color.name().upper()
-            self.swatch.setStyleSheet(
-                f"background-color: {self._hex}; border: 1px solid #888888; border-radius: 4px;")
+        q = QColor(text if text.startswith("#") else "#" + text)
+        if q.isValid():
+            self._rgb = (q.red(), q.green(), q.blue())
+            self._commit()
 
     def _on_hex_commit(self):
-        if not self.hex_edit.isEnabled():
-            return
         parsed = _parse_hex(self.hex_edit.text())
         if parsed is None:
             self.hex_edit.setStyleSheet("border: 1px solid #e5484d;")
-            self.hex_edit.setText(self._hex)
+            r, g, b = self._rgb
+            self.hex_edit.setText(f"#{r:02X}{g:02X}{b:02X}")
         else:
             self.hex_edit.setStyleSheet("")
-            self._set_hex(parsed)
+            self._rgb = (int(parsed[1:3], 16), int(parsed[3:5], 16), int(parsed[5:7], 16))
+            self._commit()
+
+    def _on_alpha(self, v: int):
+        if self._syncing:
+            return
+        self._alpha = v / 100.0
+        self.pct_lbl.setText(f"{v}%")
+        self._commit()
 
     def _on_pick(self):
         from PyQt6.QtWidgets import QColorDialog
-        color = QColorDialog.getColor(_to_qcolor(self._hex), self, t("theme.dialog.pick_color"))
+        color = QColorDialog.getColor(QColor(*self._rgb), self, t("theme.dialog.pick_color"))
         if color.isValid():
-            self._set_hex(color.name().upper())
+            self._rgb = (color.red(), color.green(), color.blue())
+            self._syncing = True
+            self.hex_edit.setText(f"#{color.red():02X}{color.green():02X}{color.blue():02X}")
+            self._syncing = False
+            self._commit()
 
     def _on_reset(self):
-        self._set_hex(self._default_hex)
+        self._set_value(self._default)
 
 
 class _BackgroundRow(QWidget):
@@ -215,7 +233,7 @@ class ThemeSettingsDialog(QDialog):
         self._base = base_colors
         self._result = None
         self.setWindowTitle(t("theme.dialog.title"))
-        self.resize(600, 660)
+        self.resize(660, 680)
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
@@ -272,8 +290,8 @@ class ThemeSettingsDialog(QDialog):
     def _collect_colors(self) -> dict:
         out = {}
         for key, row in self._color_rows.items():
-            cur = row.current_hex().upper()
-            base = self._base.get(key, "#000000").upper()
+            cur = row.current_value()
+            base = normalize_color(self._base.get(key, "#000000")) or "#000000"
             if cur != base:
                 out[key] = cur
         return out

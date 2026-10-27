@@ -44,10 +44,16 @@ from utils.config import (
     OCR_FORMATS,
     TRANSCRIBE_FORMATS,
     WHISPER_MODELS,
+    is_model_installed,
     parse_time,
 )
 from utils.i18n import i18n, t
-from utils.theme_settings import load_settings, merge_colors, save_settings
+from utils.theme_settings import (
+    load_settings,
+    merge_colors,
+    save_settings,
+    theme_profile,
+)
 from utils.themes import DARK, LIGHT, build_stylesheet
 
 # 当前激活主题色彩字典（初始深色；toggle_theme 更新）
@@ -158,7 +164,7 @@ class ConverterPage(QWidget):
         title_font.setPointSize(20)
         title_font.setWeight(QFont.Weight.DemiBold)
         self.title_lbl.setFont(title_font)
-        self.title_lbl.setStyleSheet(f"color: {DARK['primary_hi']}; "
+        self.title_lbl.setStyleSheet(f"color: {DARK['page_title']}; "
                                       f"padding-bottom: 2px; font-weight: 600;")
         layout.addWidget(self.title_lbl)
         self._widgets_to_translate.append(("title", self.title_lbl))
@@ -741,13 +747,18 @@ class TranscribePage(ConverterPage):
         self.model_combo.setCursor(Qt.CursorShape.PointingHandCursor)
         self.model_combo.setMinimumHeight(40)
         for name, info in WHISPER_MODELS.items():
+            status = t("tools.installed") if is_model_installed(name) else t("tools.not_installed")
             self.model_combo.addItem(
-                f"  {name}  │  {info['size_mb']}MB  │  {info['accuracy']}  │  {info['speed']}",
+                f"  {name}  │  {info['size_mb']}MB  │  {info['accuracy']}  │  "
+                f"{info['speed']}  │  {status}",
                 name
             )
-        ti = self.model_combo.findData("tiny")
-        if ti >= 0:
-            self.model_combo.setCurrentIndex(ti)
+        # 默认选中：优先已安装的 large-v3，否则第一个已安装，兜底首项
+        default = "large-v3" if is_model_installed("large-v3") else next(
+            (n for n in WHISPER_MODELS if is_model_installed(n)), None)
+        di = self.model_combo.findData(default) if default else -1
+        if di >= 0:
+            self.model_combo.setCurrentIndex(di)
         self.model_combo.currentIndexChanged.connect(self._on_model_changed)
         opts_layout.addWidget(self.model_combo, 1)
 
@@ -826,6 +837,9 @@ class TranscribePage(ConverterPage):
     def _on_model_changed(self, idx):
         model_name = self.model_combo.currentData()
         info = WHISPER_MODELS.get(model_name, {})
+        if not is_model_installed(model_name):
+            self.log(f"<span style='color:#f59e0b;'>{t('log.warn')}</span> "
+                     f"{t('log.warn_model_not_installed', model=model_name)}")
         if info.get("size_mb", 0) > 1000:
             self.log(f"<span style='color:#f59e0b;'>{t('log.warn')}</span> "
                      f"{t('log.warn_model_size', model=model_name, size=info['size_mb'])}")
@@ -967,7 +981,7 @@ class MainWindow(QMainWindow):
         brand_font.setBold(True)
         self.brand_lbl.setFont(brand_font)
         self.brand_lbl.setStyleSheet(
-            f"color: {DARK['primary_hi']}; padding: 14px 8px 2px 8px; "
+            f"color: {DARK['page_title']}; padding: 14px 8px 2px 8px; "
             f"background: transparent; font-weight: 700;"
         )
         sidebar_layout.addWidget(self.brand_lbl)
@@ -1054,12 +1068,14 @@ class MainWindow(QMainWindow):
     def apply_theme(self):
         global _current_colors
         base = DARK if self._theme_is_dark else LIGHT
-        colors = merge_colors(base, self.settings.get("colors", {}))
+        profile = theme_profile(self.settings, self._theme_is_dark)
+        colors = merge_colors(base, profile.get("colors", {}))
         _current_colors = colors
         sheet = build_stylesheet(colors)
         from PyQt6.QtWidgets import QApplication
         app = QApplication.instance()
         app.setStyleSheet(sheet)
+        app.setFont(QFont(colors["font_family"], 10))
         # 同步 palette
         from PyQt6.QtGui import QColor, QPalette
         p = app.palette()
@@ -1077,7 +1093,8 @@ class MainWindow(QMainWindow):
         app.processEvents()
 
     def _apply_background(self):
-        bg = self.settings.get("background", {})
+        profile = theme_profile(self.settings, self._theme_is_dark)
+        bg = profile.get("background", {})
         win = bg.get("window", {})
         side = bg.get("sidebar", {})
         c = _current_colors
@@ -1095,12 +1112,13 @@ class MainWindow(QMainWindow):
 
     def open_theme_settings(self):
         base = DARK if self._theme_is_dark else LIGHT
-        dlg = ThemeSettingsDialog(base, self.settings.get("colors", {}),
-                                  self.settings.get("background", {}), self)
+        profile = theme_profile(self.settings, self._theme_is_dark)
+        dlg = ThemeSettingsDialog(base, profile.get("colors", {}),
+                                  profile.get("background", {}), self)
         if dlg.exec():
             data = dlg.result_data()
-            self.settings["colors"] = data["colors"]
-            self.settings["background"] = data["background"]
+            profile["colors"] = data["colors"]
+            profile["background"] = data["background"]
             save_settings(self.settings)
             self.apply_theme()
 
@@ -1111,10 +1129,9 @@ class MainWindow(QMainWindow):
             f"background-color: {c['drag_glow']}; color: {c['primary_hi']}; padding: 10px 14px;"
         )
         for page in self.pages:
-            # 页面背景（实际底色由 AppBackground 背景层绘制）
-            page.setStyleSheet("background-color: transparent;")
+            # 页面背景已通过 QSS QStackedWidget#contentStack > QWidget 设为透明
             page.title_lbl.setStyleSheet(
-                f"color: {c['primary_hi']}; padding-bottom: 2px; font-weight: 600; background: transparent;")
+                f"color: {c['page_title']}; padding-bottom: 2px; font-weight: 600; background: transparent;")
             page.fmt_label.setStyleSheet(
                 f"color: {c['text_hint']}; font-weight: 500; background: transparent;")
             page.save_label.setStyleSheet(
@@ -1147,7 +1164,7 @@ class MainWindow(QMainWindow):
             page.repaint()
 
         self.brand_lbl.setStyleSheet(
-            f"color: {c['primary_hi']}; padding: 14px 8px 2px 8px; "
+            f"color: {c['page_title']}; padding: 14px 8px 2px 8px; "
             f"background: transparent; font-weight: 700;")
         opacity = "0.3" if self._theme_is_dark else "0.45"
         if self._theme_is_dark:
@@ -1182,9 +1199,9 @@ class MainWindow(QMainWindow):
         self.brand_lbl.setText(t("brand.name"))
         self.subtitle_lbl.setText(t("brand.subtitle"))
         self.tools_title.setText(t("tools.title"))
-        self.theme_btn.setText(t("theme.light") if self._theme_is_dark else t("theme.dark"))
-        self.theme_settings_btn.setText(t("theme.open"))
-        self.lang_btn.setText(t("toggle.lang"))
+        self.theme_btn.setText("☀" if self._theme_is_dark else "🌙")
+        self.theme_settings_btn.setText("🎨")
+        self.lang_btn.setText("EN" if i18n.lang == "zh" else "中")
         for btn, key in self.nav_buttons:
             btn.setText(t(key))
 

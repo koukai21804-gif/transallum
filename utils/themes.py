@@ -2,8 +2,10 @@
 
 # ── 深色主题色彩 ──
 DARK = {
+    "font_family":  "Microsoft YaHei",
     "bg_deep":      "#0a0e17",
     "bg_card":      "#111827",
+    "chip_bg":      "#1d2837",
     "bg_log":       "#0c0f15",
     "bg_input":     "#1a1f2e",
     "bg_sidebar":   "#0c0f15",
@@ -13,6 +15,7 @@ DARK = {
     "border_focus": "#58a6ff",
     "primary":      "#1677cb",
     "primary_hi":   "#58a6ff",
+    "page_title":   "#e6edf3",   # 页面大标题 / brand 名独立颜色（与主色高亮解耦）
     "btn_text":     "#0a0e17",    # 深底按钮用深色文字
     "text_title":   "#e6edf3",
     "text_body":    "#c9d1d9",
@@ -28,27 +31,30 @@ DARK = {
     "drag_glow":    "rgba(22,119,203,0.08)",
 }
 
-# ── 浅色主题色彩 ──
+# ── 浅色主题色彩（底色分层：画布 → 侧栏 → 白色卡片，输入/日志为内凹井，描边退后） ──
 LIGHT = {
-    "bg_deep":      "#f0f2f5",
+    "font_family":  "Microsoft YaHei UI",
+    "bg_deep":      "#e9ecf2",
     "bg_card":      "#ffffff",
-    "bg_log":       "#f8f9fa",
-    "bg_input":     "#ffffff",
-    "bg_sidebar":   "#e8ecf2",
-    "bg_tools":     "#f8f9fa",
-    "border_card":  "#d1d5db",
-    "border_ctrl":  "#d1d5db",
+    "chip_bg":      "#e9f0f9",
+    "bg_log":       "#eef1f6",
+    "bg_input":     "#f2f5f9",
+    "bg_sidebar":   "#dfe4ec",
+    "bg_tools":     "#ffffff",
+    "border_card":  "#d3dae2",
+    "border_ctrl":  "#dde2ea",
     "border_focus": "#1677cb",
     "primary":      "#1677cb",    # 统一品牌蓝
     "primary_hi":   "#1677cb",    # 浅色下主色即高亮色
+    "page_title":   "#1e293b",   # 页面大标题 / brand 名独立颜色（与主色高亮解耦）
     "btn_text":     "#ffffff",    # 按钮文字始终白色
     "text_title":   "#1e293b",
     "text_body":    "#334155",
-    "text_hint":    "#94a3b8",
+    "text_hint":    "#5a6677",
     "text_dim":     "#cbd5e1",
-    "green":        "#009944",
-    "red":          "#dc2626",
-    "warning":      "#b35c00",
+    "green":        "#00753a",
+    "red":          "#c02828",
+    "warning":      "#a14f00",
     "green_bg":     "rgba(0,153,68,0.08)",
     "red_bg":       "rgba(220,38,38,0.06)",
     "scrollbar":    "#cbd5e1",
@@ -71,10 +77,13 @@ QMainWindow {{
 QStackedWidget#contentStack {{
     background-color: transparent;
 }}
+QStackedWidget#contentStack > QWidget {{
+    background-color: transparent;
+}}
 
 QWidget {{
     color: {c['text_body']};
-    font-family: "Microsoft YaHei", "Segoe UI", "Noto Sans SC", sans-serif;
+    font-family: "{c['font_family']}";
 }}
 
 /* ================================================================
@@ -94,8 +103,8 @@ QGroupBox::title {{
     subcontrol-origin: margin;
     left: 16px;
     padding: 0 10px;
-    color: {c['primary_hi']};
-    background-color: {c['bg_card']};
+    color: {c['text_title']};
+    background-color: {c['chip_bg']};
     border-radius: 4px;
 }}
 
@@ -116,10 +125,10 @@ QPushButton:hover {{
     color: {c['text_title']};
 }}
 
-/* 主按钮 — 实心蓝底白字 */
+/* 主按钮 — 实心蓝底白字（无外描边） */
 QPushButton#convertBtn {{
     background-color: {c['primary']};
-    color: #ffffff;
+    color: {c['btn_text']};
     border: none;
     padding: 12px 44px;
     font-size: 15px;
@@ -128,12 +137,12 @@ QPushButton#convertBtn {{
 }}
 QPushButton#convertBtn:hover {{
     background-color: {c['primary_hi']};
-    color: #ffffff;
+    color: {c['btn_text']};
     border: none;
 }}
 QPushButton#convertBtn:disabled {{
     background-color: {c['primary']};
-    color: rgba(255,255,255,0.5);
+    color: {c['btn_text']};
     border: none;
 }}
 
@@ -155,7 +164,7 @@ QPushButton#browseBtn:hover {{
 /* 取消按钮 */
 QPushButton#cancelBtn {{
     background-color: {c['red']};
-    color: #f1f5f9;
+    color: {c['btn_text']};
     border: none;
     padding: 12px 34px;
     font-size: 15px;
@@ -367,7 +376,7 @@ QScrollArea {{
 }}
 QFrame#toolsCard {{
     background-color: {c['bg_tools']};
-    border: 1px solid {c['border_ctrl']};
+    border: 1px solid {c['border_card']};
     border-radius: 8px;
 }}
 QFrame#toolsCard QLabel {{

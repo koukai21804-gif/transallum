@@ -1,19 +1,29 @@
-"""用户自定义主题设置 — 持久化与合并"""
+"""用户自定义主题设置 — 持久化与合并
+
+深色/浅色为两套完全独立的设置方案（字体、背景、自定义颜色均互不共享）。
+存储结构：settings["themes"]["dark"|"light"] = {"colors", "background"}。
+颜色值可为 #RRGGBB（不透明）或 rgba(r,g,b,a)（带 0-100% 透明度）。
+"""
 import copy
 import json
 import os
 
-from utils.config import PROJECT_ROOT
+from utils.color_utils import split_color
+from utils.config import settings_path
 
-SETTINGS_PATH = PROJECT_ROOT / "config" / "user_theme.json"
+# 冻结态（安装版）写到 %APPDATA%\\Transallum\\config\\，开发态写 PROJECT_ROOT\\config\\。
+# 安装到 Program Files（只读）后靠此重定向避免写权限崩溃。
+SETTINGS_PATH = settings_path()
 
 # 可自定义颜色插槽：(键, 中文名)，键与 themes.DARK/LIGHT 完全一致
 COLOR_SLOTS = [
     ("primary",      "主色"),
     ("primary_hi",   "主色高亮"),
+    ("page_title",   "页面标题/品牌名"),
     ("btn_text",     "按钮文字"),
     ("bg_deep",      "窗口背景"),
     ("bg_card",      "卡片背景"),
+    ("chip_bg",      "分栏小标题底色"),
     ("bg_log",       "日志背景"),
     ("bg_input",     "输入框背景"),
     ("bg_sidebar",   "导航栏背景"),
@@ -35,14 +45,29 @@ COLOR_SLOTS = [
     ("drag_glow",    "拖拽辉光"),
 ]
 
+
+def _default_theme_profile() -> dict:
+    """单个主题的独立方案：自定义颜色 + 背景（深/浅互不共享）。"""
+    return {
+        "colors": {},  # 覆盖色 {键: "#RRGGBB"}，仅存改过的
+        "background": {
+            "window":  {"image": None, "opacity": 0.5},
+            "sidebar": {"image": None, "opacity": 0.8},
+        },
+    }
+
+
 DEFAULT_SETTINGS = {
     "dark": True,
-    "colors": {},  # 覆盖色 {键: "#RRGGBB"}，仅存改过的
-    "background": {
-        "window":  {"image": None, "opacity": 0.5},
-        "sidebar": {"image": None, "opacity": 0.8},
+    "themes": {
+        "dark":  _default_theme_profile(),
+        "light": _default_theme_profile(),
     },
 }
+
+
+def _defaults() -> dict:
+    return copy.deepcopy(DEFAULT_SETTINGS)
 
 
 def merge_colors(base: dict, overrides: dict) -> dict:
@@ -55,12 +80,56 @@ def merge_colors(base: dict, overrides: dict) -> dict:
     return merged
 
 
-def _defaults() -> dict:
-    return copy.deepcopy(DEFAULT_SETTINGS)
+def theme_profile(settings: dict, is_dark: bool) -> dict:
+    """取出指定主题的 {colors, background} 方案（就地可改，随 save_settings 持久化）。
+
+    深色/浅色各自独立：改浅色背景或颜色不会影响深色，反之亦然。
+    """
+    name = "dark" if is_dark else "light"
+    themes = settings.setdefault("themes", {})
+    prof = themes.get(name)
+    if not isinstance(prof, dict):
+        prof = themes[name] = {}
+    prof.setdefault("colors", {})
+    prof.setdefault("background", {})
+    prof["background"].setdefault("window", {"image": None, "opacity": 0.5})
+    prof["background"].setdefault("sidebar", {"image": None, "opacity": 0.8})
+    return prof
+
+
+def _clean_colors(raw) -> dict:
+    """只保留合法颜色覆盖值（#RRGGBB 或 rgba()），原样保留不改变大小写。"""
+    out = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if isinstance(v, str) and split_color(v) is not None:
+                out[str(k)] = v
+    return out
+
+
+def _clean_background(raw) -> dict:
+    """规范化背景结构，剔除非法值。"""
+    out = {"window": {"image": None, "opacity": 0.5},
+           "sidebar": {"image": None, "opacity": 0.8}}
+    if isinstance(raw, dict):
+        for region in ("window", "sidebar"):
+            entry = raw.get(region)
+            if not isinstance(entry, dict):
+                continue
+            if isinstance(entry.get("image"), str):
+                out[region]["image"] = entry["image"]
+            op = entry.get("opacity")
+            if isinstance(op, (int, float)):
+                out[region]["opacity"] = max(0.0, min(1.0, float(op)))
+    return out
 
 
 def load_settings() -> dict:
-    """读取用户设置；文件缺失/损坏/结构非法一律回退默认结构。"""
+    """读取用户设置；文件缺失/损坏/结构非法一律回退默认结构。
+
+    兼容旧版扁平结构（colors/background 挂在根上、深浅共用）：
+    自动迁移为按主题拆分，旧值同时赋给深/浅两套方案。
+    """
     try:
         with open(SETTINGS_PATH, encoding="utf-8") as f:
             data = json.load(f)
@@ -70,27 +139,30 @@ def load_settings() -> dict:
 
 
 def _normalize(data) -> dict:
-    """补全缺失字段、剔除非法值，保证返回结构完整。"""
+    """补全缺失字段、剔除非法值，保证返回结构完整（按主题拆分）。"""
     out = _defaults()
     if not isinstance(data, dict):
         return out
     if isinstance(data.get("dark"), bool):
         out["dark"] = data["dark"]
-    if isinstance(data.get("colors"), dict):
-        for k, v in data["colors"].items():
-            if isinstance(v, str) and v.startswith("#") and len(v) == 7:
-                out["colors"][str(k)] = v
-    bg = data.get("background")
-    if isinstance(bg, dict):
-        for region in ("window", "sidebar"):
-            entry = bg.get(region)
-            if not isinstance(entry, dict):
+    themes = data.get("themes")
+    if isinstance(themes, dict):
+        for name in ("dark", "light"):
+            prof = themes.get(name)
+            if not isinstance(prof, dict):
                 continue
-            if isinstance(entry.get("image"), str):
-                out["background"][region]["image"] = entry["image"]
-            op = entry.get("opacity")
-            if isinstance(op, (int, float)):
-                out["background"][region]["opacity"] = max(0.0, min(1.0, float(op)))
+            if isinstance(prof.get("colors"), dict):
+                out["themes"][name]["colors"] = _clean_colors(prof["colors"])
+            if isinstance(prof.get("background"), dict):
+                out["themes"][name]["background"] = _clean_background(prof["background"])
+    else:
+        # 旧扁平结构迁移：colors/background 曾深浅共用 → 同时赋给两套方案
+        colors = _clean_colors(data.get("colors"))
+        bg = _clean_background(data.get("background"))
+        out["themes"]["dark"]["colors"] = dict(colors)
+        out["themes"]["light"]["colors"] = dict(colors)
+        out["themes"]["dark"]["background"] = bg
+        out["themes"]["light"]["background"] = copy.deepcopy(bg)
     return out
 
 

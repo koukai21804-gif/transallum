@@ -25,6 +25,7 @@ TEXTS = {
     # ── 工具状态 ──
     "tools.title":   {"zh": "🔧  工具状态",        "en": "🔧  Tool Status"},
     "tools.installed":{"zh": "已安装",              "en": "installed"},
+    "tools.not_installed":{"zh": "未安装",          "en": "not installed"},
     "tools.notfound": {"zh": "未检测到",            "en": "not found"},
     "tools.checking": {"zh": "检测中...",           "en": "checking..."},
 
@@ -116,6 +117,11 @@ TEXTS = {
               "Please choose a different output format (e.g. mp4 → mp3),\n"
               "or use 'Save As' to specify another path."
     },
+    "error.ffmpeg_missing": {
+        "zh": "未找到 FFmpeg。请将 ffmpeg.exe 放入程序目录 tools\\ffmpeg\\bin\\，或加入系统 PATH。",
+        "en": "FFmpeg not found. Put ffmpeg.exe in tools\\ffmpeg\\bin\\ under the app "
+              "folder, or add it to PATH."
+    },
     "dialog.select_file":   {"zh": "选择文件",            "en": "Select File"},
     "dialog.save_as":       {"zh": "保存为",              "en": "Save As"},
     "dialog.done_title":    {"zh": "转换完成",            "en": "Conversion Complete"},
@@ -166,10 +172,6 @@ TEXTS = {
     "log.ocr":      {"zh": "[OCR]",  "en": "[OCR]"},
     "log.whisper":  {"zh": "[WHISPER]","en": "[WHISPER]"},
 
-    # ── 主题/语言切换 ──
-    "toggle.theme":  {"zh": "☀  浅色", "en": "☀  Light"},
-    "toggle.lang":   {"zh": "🌐 English", "en": "🌐 中文"},
-
     # ── 进度/状态消息 ──
     "progress.ffmpeg_init":    {"zh": "正在初始化 FFmpeg...",   "en": "Initializing FFmpeg..."},
     "progress.converting":     {"zh": "正在转换...",            "en": "Converting..."},
@@ -185,7 +187,6 @@ TEXTS = {
     "progress.ocr_done":       {"zh": "OCR 识别完成！共 ",      "en": "OCR complete! "},
     "progress.ocr_pages":      {"zh": " 页",                   "en": " pages"},
     "progress.doc_converting": {"zh": "正在转换文档...",        "en": "Converting document..."},
-    "progress.doc_call":       {"zh": "正在调用 Pandoc...",     "en": "Calling Pandoc..."},
     "progress.doc_done":       {"zh": "文档转换完成！",         "en": "Document conversion complete!"},
     "progress.saving_result":  {"zh": "正在保存结果...",        "en": "Saving results..."},
     "log.total_pages":         {"zh": "共 {n} 页需要识别",      "en": "{n} pages to process"},
@@ -198,6 +199,8 @@ TEXTS = {
                                  "en": "Transcribing... [{start:.1f}s - {end:.1f}s] {text:.40}..."},
     "log.warn_model_size":     {"zh": "{model} 模型约 {size}MB，首次使用将自动下载",
                                  "en": "{model} model ~{size}MB, will auto-download on first use"},
+    "log.warn_model_not_installed": {"zh": "{model} 模型未随安装包提供，转换时将尝试联网下载",
+                                     "en": "{model} is not bundled; will try to download on convert"},
     "log.warn_cancel":         {"zh": "[WARN] 正在取消任务...",  "en": "[WARN] Cancelling task..."},
     "log.selected_file":       {"zh": "[OK] 已选择: {path}",     "en": "[OK] Selected: {path}"},
     "log.convert_start":       {"zh": "{tag} {filename} → {fmt}",
@@ -221,10 +224,7 @@ TEXTS = {
     "model.dialog.dl_footer":   {"zh": "\n\nfaster-whisper 会缓存模型到本地，无需手动下载。",
                                   "en": "\n\nfaster-whisper caches models locally."},
 
-    # ── 主题切换标签 ──
-    "theme.light":  {"zh": "☀  浅色模式",  "en": "☀  Light Mode"},
     # ── 自定义主题对话框 ──
-    "theme.open":                {"zh": "🎨 主题设置", "en": "🎨 Theme"},
     "theme.dialog.title":        {"zh": "自定义主题", "en": "Custom Theme"},
     "theme.dialog.background":   {"zh": "▧  背景设置", "en": "▧  Background"},
     "theme.dialog.window_bg":    {"zh": "窗口背景:", "en": "Window BG:"},
@@ -240,7 +240,6 @@ TEXTS = {
     "theme.dialog.apply":        {"zh": "确定", "en": "OK"},
     "theme.dialog.cancel":       {"zh": "取消", "en": "Cancel"},
     "theme.dialog.alpha_hint":   {"zh": "半透明 · 点色块覆盖", "en": "translucent · pick to set"},
-    "theme.dark":   {"zh": "🌙  深色模式",  "en": "🌙  Dark Mode"},
 }
 
 

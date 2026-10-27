@@ -18,20 +18,73 @@ def _detect_project_root() -> Path:
 PROJECT_ROOT = _detect_project_root()
 TOOLS_DIR = PROJECT_ROOT / "tools"
 
-# ── Whisper 模型本地目录（全部放 D 盘，不占 C 盘） ──
-WHISPER_MODELS_DIR = PROJECT_ROOT / "models" / "whisper"
-# 兼容路径：打包后 dist 内未带模型时，回退到开发机共享模型目录
-_SHARED_MODELS_DIR = Path(r"D:\CC_project\transallum\models\whisper")
 
-# 将 Hugging Face 模型缓存重定向到 D 盘。
+def user_data_dir() -> Path:
+    """运行时用户可写数据目录：冻结态 %APPDATA%\\Transallum，开发态 PROJECT_ROOT。
+
+    安装到 Program Files（只读）后，一切运行时写操作（主题设置/日志/模型下载）
+    都须落在用户可写的这个目录，否则会因权限崩溃。
+    """
+    if getattr(sys, "frozen", False):
+        base = Path(os.environ.get("APPDATA", str(Path.home())))
+        return base / "Transallum"
+    return PROJECT_ROOT
+
+
+def settings_path() -> Path:
+    """用户主题设置路径：冻结态 %APPDATA%\\Transallum\\config\\user_theme.json，
+    开发态 PROJECT_ROOT\\config\\user_theme.json。"""
+    return user_data_dir() / "config" / "user_theme.json"
+
+
+# ── Whisper 模型本地目录 ──
+WHISPER_MODELS_DIR = PROJECT_ROOT / "models" / "whisper"
+# 可选共享模型目录（指向 models/whisper 级目录，含 <size>/model.bin）：
+# 仅当设置环境变量 TRANSALLUM_SHARED_MODELS 时参与查找，供开发机在
+# 多个工作副本间共享大模型；普通用户无需设置。
+_SM_ENV = os.environ.get("TRANSALLUM_SHARED_MODELS")
+_SHARED_MODELS_DIR = Path(_SM_ENV) if _SM_ENV else None
+
+
+def local_model_dirs(model_size: str) -> list:
+    """本地（随包分发或已下载）模型候选目录，首个为随包内置目录。
+
+    刻意不含共享目录 _SHARED_MODELS_DIR——打包版不应据此把未随包的
+    小模型误判为已安装（开发流程由 resolve_whisper_model 兜底，不受影响）。
+    """
+    dirs = [WHISPER_MODELS_DIR / model_size]
+    if getattr(sys, "frozen", False):
+        dirs.append(user_data_dir() / "models" / "whisper" / model_size)
+    return dirs
+
+
+def is_model_installed(model_size: str) -> bool:
+    """判断某模型是否已随包分发/已下载到用户目录（不含开发机共享回退）。
+
+    仅看随包目录 <size>/model.bin 是否存在，用于「听写·模型」下拉框的
+    已安装/未安装标记与默认选中。
+    """
+    for d in local_model_dirs(model_size):
+        try:
+            if d.is_dir() and (d / "model.bin").is_file():
+                return True
+        except OSError:
+            continue
+    return False
+
+
+# 将 Hugging Face 模型缓存重定向到项目目录/用户目录。
 # 注意：config 被 gui.main_window 在应用启动时导入，早于任何
 # faster_whisper / huggingface_hub 的 import，因此此环境变量必然先生效。
-os.environ.setdefault("HF_HOME", str(PROJECT_ROOT / "models" / "hf_cache"))
+_HF_HOME = PROJECT_ROOT / "models" / "hf_cache"
+if getattr(sys, "frozen", False):
+    _HF_HOME = user_data_dir() / "models" / "hf_cache"
+os.environ.setdefault("HF_HOME", str(_HF_HOME))
 
 
 def setup_whisper_env():
-    """确保 Whisper 模型缓存位于 D 盘（须在导入 faster_whisper 前调用）。"""
-    os.environ.setdefault("HF_HOME", str(PROJECT_ROOT / "models" / "hf_cache"))
+    """确保 Whisper 模型缓存位于 D 盘/用户目录（须在导入 faster_whisper 前调用）。"""
+    os.environ.setdefault("HF_HOME", str(_HF_HOME))
 
 
 def detect_gpu() -> bool:
@@ -49,12 +102,12 @@ def detect_gpu() -> bool:
 def resolve_whisper_model(model_size: str) -> str | None:
     """解析本地 Whisper 模型目录。优先级：
       1) 应用内 models/whisper/<size>（随 dist 分发，即开即用）
-      2) 开发机共享目录 D:\\CC_project\\transallum\\models\\whisper\\<size>
+      2) [冻结态] 用户可写目录 %APPDATA%\\Transallum\\models\\whisper\\<size>（联网补充）
+      3) 环境变量 TRANSALLUM_SHARED_MODELS 指定的共享目录（可选）
     返回模型目录路径；本地不存在返回 None。"""
-    candidates = [
-        WHISPER_MODELS_DIR / model_size,
-        _SHARED_MODELS_DIR / model_size,
-    ]
+    candidates = local_model_dirs(model_size)
+    if _SHARED_MODELS_DIR is not None:
+        candidates.append(_SHARED_MODELS_DIR / model_size)
     for d in candidates:
         try:
             if d.is_dir() and (d / "model.bin").is_file():
@@ -175,7 +228,7 @@ def _local_tool_path(name: str) -> str | None:
 
 
 def find_exe(name: str) -> str | None:
-    """查找可执行文件：优先项目本地 > 系统 PATH > 常见安装路径"""
+    """查找可执行文件：优先项目本地 > 系统 PATH > 官方安装器默认路径"""
     # 1) 项目本地 tools/
     local = _local_tool_path(name)
     if local:
@@ -184,19 +237,10 @@ def find_exe(name: str) -> str | None:
     exe = shutil.which(name)
     if exe:
         return exe
-    # 3) Windows 常见路径（向后兼容）
+    # 3) 官方安装器的默认安装位置
     if sys.platform == "win32":
         fallback = {
-            "ffmpeg": [
-                r"D:\ffmpeg\bin\ffmpeg.exe",
-                r"D:\tools\ffmpeg\bin\ffmpeg.exe",
-            ],
-            "tesseract": [
-                r"D:\Tesseract-OCR\tesseract.exe",
-            ],
-            "pandoc": [
-                r"D:\Pandoc\pandoc.exe",
-            ],
+            "tesseract": [r"C:\Program Files\Tesseract-OCR\tesseract.exe"],
         }
         for path in fallback.get(name, []):
             if os.path.isfile(path):

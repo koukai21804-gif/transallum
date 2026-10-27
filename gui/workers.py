@@ -1,14 +1,16 @@
 """后台工作线程 — 所有耗时操作通过 QThread 执行，不阻塞界面"""
 import os
 import subprocess
+import sys
 import traceback
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from utils.config import user_data_dir
 from utils.i18n import t
 
-# 诊断日志文件（固定在 D 盘，便于排查打包后的运行问题）
-_DIAG_LOG = r"D:\CC_project\transallum\logs\worker.log"
+# 诊断日志文件：冻结态写 %APPDATA%\\Transallum\\logs\\（只读安装目录下可写），开发态 PROJECT_ROOT\\logs\\
+_DIAG_LOG = str(user_data_dir() / "logs" / "worker.log")
 
 # 窗口程序下禁止子进程弹出 CMD 窗口（打包后 console=False，必须显式设置）
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -181,7 +183,7 @@ class MediaConvertWorker(BaseWorker):
 
         except FileNotFoundError:
             self.log.emit(traceback.format_exc())
-            self.finished.emit(False, "FFmpeg 未找到。请将 FFmpeg 安装到 D:\\CC_project\\transallum\\tools\\ffmpeg\\ 或系统 PATH。")
+            self.finished.emit(False, t("error.ffmpeg_missing"))
         except Exception as e:
             self.log.emit(traceback.format_exc())
             self.finished.emit(False, str(e))
@@ -397,7 +399,7 @@ class OCRWorker(BaseWorker):
 
             from utils.config import find_exe
 
-            # 指定 D 盘 Tesseract 路径
+            # 显式指定 Tesseract 路径（优先项目 tools/，其次 PATH / 默认安装位置）
             tesseract_exe = find_exe("tesseract")
             if tesseract_exe:
                 pytesseract.pytesseract.tesseract_cmd = tesseract_exe
@@ -605,9 +607,12 @@ class TranscribeWorker(BaseWorker):
             else:
                 self.log.emit(f"本地未找到 {self.model_size} 模型，尝试从网络下载…")
                 _diag(f"本地无模型，尝试联网下载 {self.model_size}")
+                # 冻结态（安装版）下载到用户可写目录，避免写 Program Files 只读目录崩溃
+                dl_root = (user_data_dir() / "models" / "whisper"
+                           if getattr(sys, "frozen", False) else models_dir)
                 model = WhisperModel(self.model_size, device=device,
                                      compute_type=compute_type,
-                                     download_root=str(models_dir))
+                                     download_root=str(dl_root))
                 _diag("联网下载/加载模型成功")
         except Exception as e:
             _diag(f"模型加载失败: {type(e).__name__}: {e}")

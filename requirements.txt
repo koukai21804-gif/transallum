@@ -1,5 +1,5 @@
 # Transallum - 万能转换器 依赖
-# Python 3.12  (venv 位于 D 盘，勿装 C 盘)
+# Python 3.12
 
 # ── GUI ──
 PyQt6>=6.11.0
